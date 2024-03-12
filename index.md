@@ -101,7 +101,7 @@ There is a complication when clients are allowed to store data in the butler in 
 Many Butler queries can take minutes or even longer, and it is not desirable to lock up resources in the server process whilst waiting for these queries to complete.
 The solution is to use a system where queries are sent to workers in an execution pool.
 The client will be issued a job ID and can query the server to obtain the worker status.
-Once a job completes the client will receive [question: are we using keep-alive websockets or something, or polling?] a URI to the results in either JSON or parquet format.
+Once a job completes the client will receive [question: are we using keep-alive web sockets or something, or polling?] a URI to the results in either JSON or parquet format.
 These results will be written with an expiry date to allow for automatic cleanup of results that are no longer needed.
 If the query resulted in many results they can be written as multiple files and multiple URIs can be returned to allow the client to paginate.
 
@@ -109,6 +109,8 @@ If the query resulted in many results they can be written as multiple files and 
 
 The biggest complication in implementing client/server Butler is handling writes.
 Clients will never need to update dimension records (those are created by instrument registration, raw data ingest, or visit definitions, which are generally thought of as administrative tasks that can, for now, use direct butler connections) but Data Rights holders will want to read datasets, construct new datasets from them, and store them back in a butler.
+
+We assume that there will be far fewer writes than there will be reads and most of the writes will involve multi-dataset transfers from personal workspaces or from user-batch outputs rather than people calling `butler.put()` from notebooks.
 
 There is still some debate over where user-generated products will be stored.
 
@@ -143,6 +145,7 @@ If a user wants to query multiple collections across both butlers they would hav
 
 A more general problem with separate registries is that Butler can not currently query two registries simultaneously.
 To build a quantum graph involving some datasets from a data release and some from a user registry is not yet possible and would require considerable thought.
+We also need to understand if this is handled as two separate butlers from the user perspective or if the user has a single butler instance that is combined internally (either through the server being told to use multiple registries or the remote butler client talking to two distinct butlers internally).
 
 #### A single user registry
 
@@ -153,19 +156,80 @@ For prompt processing it becomes critical in that the prompt processing registry
 If the user-facing registry has user data products in it, this implies that it can't be a simple backup of the internal registry and instead must be backed up independently.
 If there is some issue with the internal registry that is fixed, it is likely that the user-facing version would need to be fixed as well -- for a replica this is trivial but for a distinct registry this becomes an operational overhead.
 
-For this reason we must consider the option of a read-only user-facing registry containing the formal observatory data products, and a single user registry.
-
-An alternative to the single database registry is for there to be a read-only Data Release butler registry and a distinct user registry where all user and group collections live.
-
-
+For this reason we must consider the option of a read-only user-facing registry containing the formal observatory data products, and a single user registry containing all the other datasets.
+As for the previous option, it will be necessary for the graph building to be modified to allow multiple registries (without which user batch processing is not possible) and some clarification as to how the user interacts with the two registries.
 
 ### Writing Datasets
 
-Where?
-How to quota?
-User batch complication.
+Users will want to be able to store datasets in a butler repository.
+For Data Preview 0.2 {cite:p}`RTN-041` three buckets on Google were used: one for the raw data, one for the the data release products themselves, and one for user products.
+The first two buckets were read-only and the user bucket was accessed via the use of a chained datastore in the butler configuration.
 
+In operations a similar pattern will be used but with the additional constraint that users will have quotas on the amount of storage they can use.
 
+There are many options where a dataset could be stored when the user issues `butler.put()`:
+
+1. Their personal POSIX storage space.
+2. Per-user and per-group buckets in the cloud.
+3. A general user bucket in the cloud per butler where `u/$USER/` is enforced.
+4. A general user bucket per butler at the USDF.
+
+Option #1 allows a single storage area for all the user's data products and simplifies the calculation of quotas.
+It does not provide any means of supporting collaborative groups.
+The remaining options will all involve the server generating signed URLs for writes.
+Option #2 solves the collaboration problem at the expense of creating tens of thousands of buckets.
+The final two options are effectively identical, but require more work to handle quotas.
+The choice between them depends on the cost of cloud storage versus USDF storage (based on the expected size of user data products) and how user batch {cite:p}`DMTN-223` interacts with cloud users.
+All user batch processing will take place at the USDF such that any user products to be used as inputs for that processing must be available at the USDF (the generated graph should not use signed URLs to locate the files) and all the data products created by the processing must be made available to the user and stored in their user or group collection.
+This suggests that option #4 may be the best option since the files can be read from and written to the final location at USDF without requiring transfers.
+
+One additional thing to consider is how to handle user storage with multiple data releases.
+The first two options listed would need to have additional information in the file hierarchy to reference the relevant parent butler repository.
+The last two options will use a server configuration to indicate where the user bucket will be located.
+
+### Prompt Processing Repository
+
+The prompt processing repository differs from a data release repository in that it is being updated on a daily basis for the entire duration of the survey, but also datasets are regularly being deleted from it.
+User products stored in the repository will include provenance to datasets that only exist in registry and can not themselves be retrieved.
+
+The long life time of the repository indicates that there will have to be migrations to support the evolving LSST Science Pipelines and evolving butler registry schema migrations.
+
+For example, at the end of the survey there will be no datasets written by prompt processing in the repository but there might be derived user products.
+Users are unlikely to want their derived products to be deleted automatically if they have sufficient quota available.
+
+Reading these old files might be difficult given data model evolution, and possibilities for supporting this are discussed in the next section.
+
+```{note}
+Will the DR10 data release pipelines software be required to read (without loss of information) datasets written by the DR1 software?
+```
+
+### Accessing Multiple Data Releases
+
+Over time people will be writing derived data products associated with a data release and then a new data release will be issued.
+By default those previous datasets will not be visible to the butler containing the new data release.
+As long as the previous butler is accessible a user can create two `Butler` instances to access those datasets.
+If older data releases are completely removed (including the registry) then this will not work and tooling must be provided to allow people to migrate datasets from older data release butlers to newer data releases.
+This tooling does exists (see `Butler.transfer_from()`) but may need to be push-button activated.
+
+If these datasets are migrated from data release to data release it will be necessary to ensure that the formatters used to read files continue to function across every data release.
+
+One proposal being considered is to switch to using labeled formatters in the datastore records rather than the full name of a python class.
+The labeled formatter would then be mapped to an explicit python class defined within the butler configuration.
+These labels could then be versioned (e.g., `ExposureFormatterV1`) to allow old files to be read by new software even if there has been a major change of data model, even allowing a formatter to return a different Python type than it did for an earlier data release.
+
+### Server Evolution
+
+One approach to deploying multiple data releases is for the Butler server used to access the data release is the exact same server implementation that the data release was initially shipped with using a `daf_butler` version and dimension universe directly matching that initial version.
+
+This sounds easy but public-facing servers (especially if we make them generally available) present inherent security risks if they are left as-is over the years.
+Tracking security updates means that we will have to continue to redeploy the Butler server over the years, including potentially requiring quite major modifications to migrate to newer versions of critical infrastructure.
+This is work that would have to be done on long-lived release branches and not all of it could be done as simple backports from the newest release.
+
+A more sustainable approach is to continually update the servers of old releases.
+This can include adopting new API versions, which would break the ability of a DR1 client to connect to Data Release 1 during the era of DR10, even though a DR10 client would be able to connect, unless the DR1 software was maintained an evolved over the lifetime of the survey.
+
+* RSP will not be able to use a DR1 docker container from the DR1 era during DR10 anyhow.
+* Are we planning to keep long-lived DRn branches of science pipelines and supported conda environments to allow a DR1 container to be loaded 10 years later?
 
 ## References
 
@@ -173,4 +237,4 @@ User batch complication.
   :style: lsst_aa
 ```
 
-[^oprah]: This was dubbed the "Oprah
+[^oprah]: This was dubbed the "Oprah" model of butler allocations: "You get a butler! You get a butler! Everybody gets a butler!"
