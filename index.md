@@ -2,7 +2,7 @@
 
 ```{abstract}
 There are many approaches that can be taken when considering where to deploy the Butler servers and how to implement a server in a way that can support the performance requirements.
-This document proposes some strategies that came out of the recent Joint Technical Meeting held at SLAC in Februrary 2024.
+This document proposes some strategies that came out of the recent Joint Technical Meeting held at SLAC in February 2024.
 ```
 
 ## Introduction
@@ -219,17 +219,26 @@ These labels could then be versioned (e.g., `ExposureFormatterV1`) to allow old 
 
 ### Server Evolution
 
-One approach to deploying multiple data releases is for the Butler server used to access the data release is the exact same server implementation that the data release was initially shipped with using a `daf_butler` version and dimension universe directly matching that initial version.
+One approach to deploying multiple data releases is for the Butler server used to access the data release to be the exact same server implementation that the data release was initially shipped with using a `daf_butler` version and dimension universe directly matching that initial version.
 
-This sounds easy but public-facing servers (especially if we make them generally available) present inherent security risks if they are left as-is over the years.
-Tracking security updates means that we will have to continue to redeploy the Butler server over the years, including potentially requiring quite major modifications to migrate to newer versions of critical infrastructure.
-This is work that would have to be done on long-lived release branches and not all of it could be done as simple backports from the newest release.
+This sounds easy but public-facing servers (especially if we make them generally available such that data rights holders can access the butler outside of the RSP) present inherent security risks if they are left as-is over the years.
+Tracking security updates means that we can not leave old server deployments unchanged but must keep them up to date.
+Since the server code itself does not depend on the LSST Science Pipelines software the simplest approach is to ensure that all servers, regardless of data release, are updated to the same version.
 
-A more sustainable approach is to continually update the servers of old releases.
-This can include adopting new API versions, which would break the ability of a DR1 client to connect to Data Release 1 during the era of DR10, even though a DR10 client would be able to connect, unless the DR1 software was maintained an evolved over the lifetime of the survey.
+This will require some planning in terms of:
 
-* RSP will not be able to use a DR1 docker container from the DR1 era during DR10 anyhow.
-* Are we planning to keep long-lived DRn branches of science pipelines and supported conda environments to allow a DR1 container to be loaded 10 years later?
+1. Ensuring that old dimension universes are always supported.
+2. Managing API version changes such that older client libraries from earlier data releases can still connect to the server until such a time that they can be patched to support the newer API.
+
+Regarding the second point, the simplest approach for the older releases is that the server software always supports the older APIs.
+It may, though, be better in the longer term to only support a single server API.
+Modifying older DR releases to use new APIs has some difficulties in terms of making patch releases when the Conda environment is effectively pinned to the versions that it was originally built with.
+If the back port of support for the new server to the older client can work within the constraints of the older package versions this can probably work, but if some update is needed to a dependent package it may well be difficult to solve the Conda environment.
+
+```{warning}
+If there is a policy to drop support completely for older data release software versions this will affect how we approach the question of server evolution.
+Even though the project is only required to keep the previous two data releases available it is possible for other locations to host an older data release, it is possible that someone would like to use the DR1 software to process a raw file, and it is possible that we would keep the DR1 registry accessible even with the data files removed.
+```
 
 ## References
 
