@@ -36,7 +36,7 @@ There are some core assumptions made by the developer team that should be spelle
 
 ### Data Preview 0
 
-When Data Preview 0.2 is relocated from the Interim Data Facility to the USDF in August it will no longer be generally accessible to the data preview delegates.
+When Data Preview 0.2 {cite:p}`RTN-041` is relocated from the Interim Data Facility to the USDF in August it will no longer be generally accessible to the data preview delegates.
 Staff will still be able to access it from the USDF RSP using a direct butler connection.
 The dataset can be used as a client/server testbed for the hybrid data access center approach where the client is on Google but the data are at SLAC.
 
@@ -46,8 +46,8 @@ The dataset can be used as a client/server testbed for the hybrid data access ce
   This includes access to prompt processing products.
 * DP1 will use Butler client/server.
 * The initial plan is for DP1 to be read-only with no ability to run `Butler.put()`.
-* Since this is a static read-only dataset the ObsCore tables can be populated by exporting from the Butler registry and importing into Qserv as was done for DP0.2.
-* Since this dataset is read-only there is no need for group or user collection management.
+* Since this is a static read-only dataset the ObsCore tables can be populated by exporting from the Butler registry and importing into Qserv {cite:p}`DMTN-243` as was done for DP0.2.
+* Since this data repository is read-only there is no need for group or user collection management.
 
 ### Prompt Processing During Survey Operations
 
@@ -70,7 +70,7 @@ To solve this problem there will be multiple strategies:
 
 #### Record Caching
 
-For a static data release the dimension coordinate space is pre-defined and will no new records will be added.
+For a static data release the dimension coordinate space is pre-defined and no new records will be added.
 Even for a live data repository, such as the Prompt Processing repository, certain record categories are only rarely augmented and are relatively small.
 
 For example, the number of `instrument` records is of order 10, the number of `physical_filter` records is of order 1,000, and the number of `detector` records is of order 1,000.
@@ -85,7 +85,7 @@ Those records can not be cached.
 #### Multiple Servers
 
 A single server, however large, can not reliably handle thousands of simultaneous requests.
-This is not helped by the butler APIs being designed before `async` was considered stable, requiring the server to create threads for all incoming requests.
+This is not helped by the butler APIs being designed before `async` was considered stable, requiring the server to create threads for all incoming requests and Python not currently being a language that supports good thread performance.
 
 To allow arbitrary scaling we will deploy multiple server instances with some form of load balancing.
 We are designing the server to be stateless such that any client can talk to any server at any time without having a client pinned to a specific server.
@@ -101,24 +101,24 @@ There is a complication when clients are allowed to store data in the butler in 
 Many Butler queries can take minutes or even longer, and it is not desirable to lock up resources in the server process whilst waiting for these queries to complete.
 The solution is to use a system where queries are sent to workers in an execution pool.
 The client will be issued a job ID and can query the server to obtain the worker status.
-Once a job completes the client will receive [question: are we using keep-alive web sockets or something, or polling?] a URI to the results in either JSON or parquet format.
+Once a job completes the client will receive [question: are we using keep-alive web sockets or polling?] a URI to the results in either JSON or parquet format.
 These results will be written with an expiry date to allow for automatic cleanup of results that are no longer needed.
 If the query resulted in many results they can be written as multiple files and multiple URIs can be returned to allow the client to paginate.
 
 ### Writing to a Butler Registry
 
 The biggest complication in implementing client/server Butler is handling writes.
-Clients will never need to update dimension records (those are created by instrument registration, raw data ingest, or visit definitions, which are generally thought of as administrative tasks that can, for now, use direct butler connections) but Data Rights holders will want to read datasets, construct new datasets from them, and store them back in a butler.
+Clients will never need to update dimension records (those are created by instrument registration, raw data ingest, or visit definitions, which are generally thought of as administrative tasks that can, for now, use direct butler connections) but Data Rights holders will want to read datasets, construct new datasets derived from them, and store them back in a butler.
 
 We assume that there will be far fewer writes than there will be reads and most of the writes will involve multi-dataset transfers from personal workspaces or from user-batch outputs rather than people calling `butler.put()` from notebooks.
 
-There is still some debate over where user-generated products will be stored.
+There is still some debate over where user-generated products will be stored and that is discussed [later in this document](#writing-datasets).
 
 We have considered multiple options.
 
 #### Use primary database
 
-In this scenario, whilst queries can be spread across multiple database servers, reads always go to a single database server.
+In this scenario, whilst queries can be spread across multiple database servers, writes always go to a single database server.
 Those updates are then replicated to the other servers, albeit with no immediate consistency guarantees and the possibility that someone could put a dataset and not be able to retrieve it straightaway due to replication latency.
 
 This is the simplest approach and closely matches how writes are handled in the direct butler.
@@ -136,11 +136,11 @@ It also does not work well with the concept of user batch {cite:p}`DMTN-223` whe
 
 An option proposed at the Joint Technical Meeting in February was to give everyone a personal butler PostgreSQL registry along with a personal object store bucket.[^oprah]
 This is intriguing because it allows for everyone to be completely independent, allows us to allocate users to specific servers, and would not require us to replicate all registry entries to every server.
-It would also be possible to create group-based butlers for people to collaborate on -- if a scientist wants to make a dataset available to the group they can transfer the dataset to that butler using `Butler.transfer_from` in the normal way without changing the UUID of the dataset.
+It would also be possible to create group-based butlers for people to collaborate on – if a scientist wants to make a dataset available to the group they can transfer the dataset to that butler using `Butler.transfer_from` in the normal way without changing the UUID of the dataset.
 
 Seeding these personal butlers would involve using `Butler.transfer_from` from the primary butler (but not copying any of the files, instead somehow enforcing a `direct` transfer mode be used), which leads to the possibility of someone seeding their butler with all of the datasets from the primary one.
-At that point you might have 10,000 or more personal replicas of the entire data release, which is less than ideal.
-It might be necessary to explicitly block the transfer of datasets from the primary butler to the user butler using `transfer_from` and only allow new datasets to be stored -- a `butler.get` from the primary followed by a `butler.put` to the user butler can not be prevented, but this would result in the copied dataset using the user's quota and so would be self-limiting.
+At that point you might have 10,000 or more personal replicas of the entire data release registry, which is less than ideal.
+It might be necessary to explicitly block the transfer of datasets from the primary butler to the user butler using `transfer_from` and only allow new datasets to be stored – a `butler.get` from the primary followed by a `butler.put` to the user butler can not be prevented, but this would result in the copied dataset using the user's quota and so would be self-limiting.
 If a user wants to query multiple collections across both butlers they would have to do that as independent queries.
 
 A more general problem with separate registries is that Butler can not currently query two registries simultaneously.
@@ -154,10 +154,14 @@ In particular deployments of new replicas or restoring from backups or disaster 
 Given that user registries still have to be backed up this is not a particularly useful distinction for a formal data release.
 For prompt processing it becomes critical in that the prompt processing registry is updated every night and is likely a replica of an internal registry.
 If the user-facing registry has user data products in it, this implies that it can't be a simple backup of the internal registry and instead must be backed up independently.
-If there is some issue with the internal registry that is fixed, it is likely that the user-facing version would need to be fixed as well -- for a replica this is trivial but for a distinct registry this becomes an operational overhead.
+If there is some issue with the internal registry that is fixed, it is likely that the user-facing version would need to be fixed as well – for a replica this is trivial but for a distinct registry this becomes an operational overhead.
 
 For this reason we must consider the option of a read-only user-facing registry containing the formal observatory data products, and a single user registry containing all the other datasets.
 As for the previous option, it will be necessary for the graph building to be modified to allow multiple registries (without which user batch processing is not possible) and some clarification as to how the user interacts with the two registries.
+
+One downside of a single user registry relates to the handling of collaborations.
+If datasets are written to a user run collection they can not currently be reallocated to a group run collection.
+Butler requires that the dataset be retrieved and then stored in the new location, resulting in the dataset UUID being changed and potentially breaking the provenance chain with the original dataset.
 
 ### Writing Datasets
 
@@ -165,27 +169,57 @@ Users will want to be able to store datasets in a butler repository.
 For Data Preview 0.2 {cite:p}`RTN-041` three buckets on Google were used: one for the raw data, one for the the data release products themselves, and one for user products.
 The first two buckets were read-only and the user bucket was accessed via the use of a chained datastore in the butler configuration.
 
-In operations a similar pattern will be used but with the additional constraint that users will have quotas on the amount of storage they can use.
+In operations a similar pattern will be used in that the raw data and formal data products must be stored in read-only locations, but with the additional constraint that users will have [quotas](#quotas) on the amount of storage they can use.
 
 There are many options where a dataset could be stored when the user issues `butler.put()`:
 
 1. Their personal POSIX storage space.
-2. Per-user and per-group buckets in the cloud.
-3. A general user bucket in the cloud per butler where `u/$USER/` is enforced.
-4. A general user bucket per butler at the USDF.
+2. Per-user and per-group buckets in the cloud or at the USDF.
+3. A general user bucket in the cloud or at the USDF per butler where `u/$USER/` is enforced.
 
 Option #1 allows a single storage area for all the user's data products and simplifies the calculation of quotas.
-It does not provide any means of supporting collaborative groups.
+It does not provide any means of supporting collaborative groups and that likely means this option is not tenable other than in the narrow "workspace" concept described in {cite:p}`DMTN-271`.
+
 The remaining options will all involve the server generating signed URLs for writes.
+
 Option #2 solves the collaboration problem at the expense of creating tens of thousands of buckets.
-The final two options are effectively identical, but require more work to handle quotas.
-The choice between them depends on the cost of cloud storage versus USDF storage (based on the expected size of user data products) and how user batch {cite:p}`DMTN-223` interacts with cloud users.
-All user batch processing will take place at the USDF such that any user products to be used as inputs for that processing must be available at the USDF (the generated graph should not use signed URLs to locate the files) and all the data products created by the processing must be made available to the user and stored in their user or group collection.
-This suggests that option #4 may be the best option since the files can be read from and written to the final location at USDF without requiring transfers.
+Option #3 is similar to how we currently handle user data products but does require more work to handle quotas than option #2.
+
+The choice between USDF and Cloud storage buckets depends on the cost of cloud storage versus USDF storage (based on the expected size of user data products) and how user batch {cite:p}`DMTN-223` interacts with cloud users.
+
+All user batch processing will take place at the USDF such that any user products to be used as inputs for that processing must be available at the USDF (the generated graph should not use signed URLs to locate the files in the cloud since signing happens in the server and the server is not available at batch execution time and signed URLs can not be stored in the graph because of expiry times) and all the data products created by the processing must be made available to the user and stored in their user or group collection.
+This constraint from batch processing suggests that USDF may be the best option since the files can be read from and written to the final location at USDF without requiring transfers.
+
+```{warning}
+It has been noted that Weka can only support up to 10,000 buckets.
+This is similar to the expected number of users and implies that if Weka is required as the USDF object store interface and user products are to be stored at USDF, then option #2 can not be used.
+```
 
 One additional thing to consider is how to handle user storage with multiple data releases.
 The first two options listed would need to have additional information in the file hierarchy to reference the relevant parent butler repository.
-The last two options will use a server configuration to indicate where the user bucket will be located.
+The final option would use a server configuration to indicate where the specific user bucket is located as is done for DP0.2.
+
+#### Quotas
+
+Dataset file quotas for RSP users' POSIX file space will be monitored by the RSP infrastructure itself.
+Users will not have direct access to buckets without being mediated by the Butler server issuing signed URLs.
+
+For butler datasets quota management depends on how datasets are stored.
+For a shared bucket the butler server has to know (a) how much quota a user has, and (b) how much of the allocation they have utilized, before deciding whether a dataset can be stored.
+Care must be taken to deal with a user attempting multiple writes in parallel.
+
+Running a daily "cron" job to scan the bucket to calculate quota allocation does not seem feasible given how much people could store in a single day (especially for the outputs of user batch).
+This likely means that there will have to be some lightweight database tracking quotas for each user across all their buckets, with each write or deletion adjusting the quota value as appropriate.
+
+```{note}
+Since the system doesn't know the size of the file until it has been written with the signed URL, does that mean that the file can be deleted by the server and the write rejected if it causes the user to exceed their quota?
+Are they allowed to write one file over their quota?
+What about parallel writes?
+How strict are the requirements?
+```
+
+The per-user/group bucket makes everything significantly easier in that the storage system knows how much data is in each bucket without having to check the size of individual files.
+Querying the bucket usage (does Google have an API for this or is it solely visible on admin screens?) and the quota allocation is then sufficient to decide if a write can be accepted or not and there is no need to track individual deletions and writes.
 
 ### Prompt Processing Repository
 
@@ -197,7 +231,7 @@ The long life time of the repository indicates that there will have to be migrat
 For example, at the end of the survey there will be no datasets written by prompt processing in the repository but there might be derived user products.
 Users are unlikely to want their derived products to be deleted automatically if they have sufficient quota available.
 
-Reading these old files might be difficult given data model evolution, and possibilities for supporting this are discussed in the next section.
+Reading these old files might be difficult given data model evolution, and possibilities for supporting this are discussed in the [next section](#accessing-multiple-data-releases).
 
 ```{note}
 Will the DR10 data release pipelines software be required to read (without loss of information) datasets written by the DR1 software?
@@ -214,8 +248,12 @@ This tooling does exists (see `Butler.transfer_from()`) but may need to be push-
 If these datasets are migrated from data release to data release it will be necessary to ensure that the formatters used to read files continue to function across every data release.
 
 One proposal being considered is to switch to using labeled formatters in the datastore records rather than the full name of a python class.
-The labeled formatter would then be mapped to an explicit python class defined within the butler configuration.
+The labeled formatter would then be mapped to an explicit python class defined within the butler configuration, allowing the mapping to change as new versions are released.
 These labels could then be versioned (e.g., `ExposureFormatterV1`) to allow old files to be read by new software even if there has been a major change of data model, even allowing a formatter to return a different Python type than it did for an earlier data release.
+
+A related issue is Storage Class definitions.
+These definitions (mapping a butler dataset type to a python type) are currently assumed to be global for all butlers but it is forseeable that a dataset type in DR1 might use a different python type to that used for the same dataset type in DR11 in a way that is not compatible with the type conversion system that is available.
+This may lead to having to have per-butler storage class definitions, much like we have per-butler dimension universes.
 
 ### Server Evolution
 
