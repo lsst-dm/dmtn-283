@@ -20,3 +20,11 @@ name = {given = "Tim", family = "Jenness"}
 name = "Rubin Observatory Project Office"
 internal_id = "RubinObs"
 address = "950 N. Cherry Ave., Tucson, AZ 85719, USA"
+[[technote.authors]]
+name = {given = "David H.", family = "Irving"}
+internal_id = "irvingd"
+orcid = "https://orcid.org/0009-0005-9099-4970"
+[[technote.authors.affiliations]]
+name = "Rubin Observatory Project Office"
+internal_id = "RubinObs"
+address = "950 N. Cherry Ave., Tucson, AZ 85719, USA"
