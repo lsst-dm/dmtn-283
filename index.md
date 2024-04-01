@@ -231,7 +231,7 @@ It does not provide any means of supporting collaborative groups and that likely
 The remaining options will all involve the server generating signed URLs for writes.
 
 Option #2 solves the collaboration problem at the expense of creating tens of thousands of buckets.
-Option #3 is similar to how we currently handle user data products but does require more work to handle quotas than option #2.
+Option #3 is similar to how we currently handle user data products but does potentially require more work to handle quotas than option #2.
 
 The choice between USDF and Cloud storage buckets depends on the cost of cloud storage versus USDF storage (based on the expected size of user data products) and how user batch {cite:p}`DMTN-223` interacts with cloud users.
 
@@ -272,7 +272,7 @@ How strict are the requirements?
 ```
 
 The per-user/group bucket possibly makes quota tracking somewhat easier in that the storage system knows how much data is in each bucket without having to check the size of individual files.
-Unfortunately this information does not seem to be available outside of administrative screens and they may not be a public API for obtaining the size of a bucket.
+Unfortunately this information does not seem to be available outside of administrative screens and there may not be a public API for obtaining the size of a bucket.
 It may still be necessary to implement a quota tracking system independently of the underlying storage APIs.
 
 Once the current size of the user's storage usage has been determined it is possible in some S3 APIs to specify the maximum size of file that a user can upload, which would allow a quota limit to be enforced without requiring that the file be uploaded and then deleted.
