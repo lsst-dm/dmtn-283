@@ -90,7 +90,7 @@ If a new filter is added, this event can be planned for and a mechanism can be i
 
 Skymaps and tract/patch definitions are also something that can be considered for pre-fetch.
 
-Even for `day_obs` the total number of records is only about 4,000 for LSSTCam over the ten year survey, and for a static data release we could consider pre-fetching those.
+Even for `day_obs` the total number of records is only about 4,000 for LSSTCam over the ten year survey (twice that if LATISS is included) with limited metadata attached to those records, and for a static data release we could consider pre-fetching those.
 
 The situation is different for `exposure`, `visit` and `group` where there can be of order 1,000 of each of those created per night (millions of records).
 Those records (including metadata fields) can not be pre-fetched into the server and must be obtained from the database every time they are needed.
@@ -133,6 +133,9 @@ These results will be written with an expiry date to allow for automatic cleanup
 Additionally, context managers will be supported to allow the client to send a message to the server when it no longer needs the results.
 If the query resulted in many results they can be written as multiple files and multiple URIs can be returned to allow the client to paginate.
 
+Additionally, a queue system makes it possible for individual users who are doing many queries simultaneously to be rate-limited.
+The system should not look like it is down for people if a single user is submitting hundreds of queries and is ahead of everyone else in the queue.
+
 ### Writing to a Butler Registry
 
 The biggest complication in implementing client/server Butler is handling writes.
@@ -150,8 +153,10 @@ In this scenario, whilst queries can be spread across multiple database servers,
 Those updates are then replicated to the other servers, albeit with no immediate consistency guarantees and the possibility that someone could put a dataset and not be able to retrieve it straightaway due to replication latency.
 
 This is the simplest approach and closely matches how writes are handled in the direct butler.
+It does mean that it would be possible for a user to put a dataset and not be able to get it back straightaway due to replication delays -- they will not be able to guarantee that their get uses the initial database server.
+Blocking the put until the records have been fully replicated is not desirable.
 
-#### Use Butler Workspaces
+#### Use Local SQLite
 
 Another option is to use entirely "local" storage.
 In this scenario people use a local SQLite registry with their POSIX disk allocation, transferring dataset registry entries to their local butler, processing them locally, and keeping the output datasets local.
