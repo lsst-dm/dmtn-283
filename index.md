@@ -67,7 +67,7 @@ To support VO services "live" ObsCore will be used with Butler updating the ObsC
 With potentially 10,000 simultaneous users running queries for datasets and dimension records, it is impossible for one server to be able to handle that load with one database.
 To solve this problem there will be multiple strategies:
 
-* Servers will pre-fetch some database dimension records and collection information.
+* Servers will pre-fetch some database dimension records and collection information. {cite:p}`DMTN-289`
 * Multiple server instances will be deployed with load balancing.
 * Multiple database server instances will be deployed.
 * Servers will not run database queries directly, instead they will spawn workers that will run the queries.
