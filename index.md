@@ -31,17 +31,19 @@ There are some core assumptions made by the developer team that should be spelle
 * Data Release Processing, including multi-site processing {cite:p}`DMTN-213`, will use a direct butler.
   Campaign processing is run by trusted users doing large graph builds.
 * Any transfers of Prompt Processing products to butler repositories at the USDF will use direct butler.
-* Developers logged in directly to the USDF will use direct butler.
+* Developers logged in directly to the USDF will use direct butler when logged onto interactive nodes and the USDF RSP.
+  They will only use client/server indirectly via USDF VO services.
   Permissions and auditing will be handled by creating user accounts in the PostgreSQL databases rather than the current use of shared accounts.
+  Additionally, datastore protections will be used such as file system ACLs or per-user S3 credentials.
 * Summit users do not need to access summit butlers using client/server and their notebooks can connect directly to Butler.
-* All RSP deployments will require a client/server butler to implement VO services, but that server can be restricted to only those services.
+* All RSP deployments will require a client/server butler to implement VO services, but that server will be hidden from users.
 * External Data Rights holders must always access butler datasets through client/server.
 * It will be possible for a server to sign URLs such that datasets can be retrieved directly by clients without requiring a proxy server.
   (see also {cite:p}`DMTN-284`)
 
 ### Data Preview 0
 
-When Data Preview 0.2 {cite:p}`RTN-041` is relocated from the Interim Data Facility to the USDF in August it will no longer be generally accessible to the data preview delegates.
+At the February meeting it was stated that when Data Preview 0.2 {cite:p}`RTN-041` is relocated from the Interim Data Facility to the USDF it will no longer be generally accessible to the data preview delegates and the removal will not drive the timeline for client/server development.
 Staff will still be able to access it from the USDF RSP using a direct butler connection.
 The dataset can be used as a client/server testbed for the hybrid data access center approach where the client is on Google but the data are at SLAC.
 
@@ -69,7 +71,7 @@ To solve this problem there will be multiple strategies:
 
 * Servers will pre-fetch some database dimension records and collection information. {cite:p}`DMTN-289`
 * Multiple server instances will be deployed with load balancing.
-* Multiple database server instances will be deployed.
+* Multiple database server instances will be deployed to help with read-only query load.
 * Servers will not run database queries directly, instead they will spawn workers that will run the queries.
 * The number of queries a single user can execute will be limited and a queuing system employed.
 
@@ -104,7 +106,7 @@ Caching all the collection definitions in the server might be possible, so long 
 A data release will have a large number of unchanging collection definitions combined with user and group collections that can be created or disappear at any time.
 A prompt processing repository will be getting new collections on a daily basis in addition to the user and group collections.
 It might be necessary for specific collections to be marked as permanent to allow the servers to know that those will not be modified, but require database queries for the dynamic collections.
-The approaches to collection caching are still to be worked out and we are investigating reorganizing how collections are stored in the database to make queries on them more efficient without the recursion currently used to support chains of datastores with chains of datastores.
+The approaches to collection caching are still to be worked out and we are investigating reorganizing how collections are stored in the database to make queries on them more efficient without the recursion currently used to support chains of collections with chains of collections.
 
 It might be simpler for the client to never cache collection information if the server is caching.
 
@@ -113,7 +115,7 @@ It might be simpler for the client to never cache collection information if the 
 A single server, however large, can not reliably handle thousands of simultaneous requests.
 This is not helped by the butler APIs being designed before `async` was considered stable, requiring the server to create threads for all incoming requests and Python not currently being a language that supports good thread performance.
 
-To allow arbitrary scaling we will deploy multiple server instances with some form of load balancing.
+To allow arbitrary scaling we will deploy multiple server instances with some form of load balancing, possibly using native Kubernetes load-balancing strategies.
 We are designing the server to be stateless such that any client can talk to any server at any time without having a client pinned to a specific server.
 
 #### Multiple Database Servers
@@ -127,6 +129,7 @@ There is a complication when clients are allowed to store data in the butler in 
 Many Butler queries can take minutes or even longer, and it is not desirable to lock up resources in the server process whilst waiting for these queries to complete.
 The solution is to use a system where queries are sent to workers in an execution pool.
 The client will be issued a job ID and can query the server to obtain the worker status.
+We will consider using the standard UWS protocol {:cite:p}`2016ivoa.spec.1024H` used elsewhere in the project.
 The client will initially use polling to determine when a query has completed.
 Once a job completes the client will receive a URI to the results in either JSON or parquet format.
 These results will be written with an expiry date to allow for automatic cleanup of results that are no longer needed.
@@ -146,13 +149,13 @@ We assume that there will be far fewer writes than there will be reads and most 
 There is still some debate over where user-generated products will be stored and that is discussed [later in this document](#writing-datasets).
 
 We have considered multiple options.
+If more than one database is used to represent a view of a single butler registry, care will have to be taken with schema migrations to make sure that everything remains in sync.
+We also have to ensure that table ownership is consistent with allowing administrators to perform the migration (and ensuring that users can not perform the migration).
 
 #### Use primary database
 
 In this scenario, whilst queries can be spread across multiple database servers, writes always go to a single database server.
-Those updates are then replicated to the other servers, albeit with no immediate consistency guarantees and the possibility that someone could put a dataset and not be able to retrieve it straightaway due to replication latency.
-
-This is the simplest approach and closely matches how writes are handled in the direct butler.
+Those updates are then replicated to the other servers and this is the simplest approach and closely matches how writes are handled in the direct butler.
 It does mean that it would be possible for a user to put a dataset and not be able to get it back straightaway due to replication delays -- they will not be able to guarantee that their get uses the initial database server.
 Blocking the put until the records have been fully replicated is not desirable.
 
