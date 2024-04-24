@@ -217,8 +217,8 @@ An alternative is to have a fixed cache for datasets such as the deep coadds, an
 ### Writing Datasets
 
 Users will want to be able to store datasets in a butler repository.
-For Data Preview 0.2 {cite:p}`RTN-041` three buckets on Google were used: one for the raw data, one for the the data release products themselves, and one for user products.
-The first two buckets were read-only and the user bucket was accessed via the use of a chained datastore in the butler configuration.
+For Data Preview 0.2 {cite:p}`RTN-041` three buckets on Google were used: one for the raw data (which used direct ingest URIs), one for the the data release products themselves, and one for user products.
+The first two buckets were read-only and the user bucket was accessed via the use of a chained datastore in the butler configuration (the DRP datastore was configured to reject all puts).
 
 In operations a similar pattern will be used in that the raw data and formal data products must be stored in read-only locations, but with the additional constraint that users will have [quotas](#quotas) on the amount of storage they can use.
 
@@ -265,6 +265,7 @@ Care must be taken to deal with a user attempting multiple writes in parallel.
 
 Running a daily "cron" job to scan the bucket to calculate quota allocation does not seem feasible given how much people could store in a single day (especially for the outputs of user batch).
 This likely means that there will have to be some lightweight database tracking quotas for each user across all their buckets, with each write or deletion adjusting the quota value as appropriate.
+This will be augmented by daily reconciliation jobs -- Butler can report all datasets that were created within a time period, although it can't report directly on deletions.
 
 ```{note}
 Since the system doesn't know the size of the file until it has been written with the signed URL, does that mean that the file can be deleted by the server and the write rejected if it causes the user to exceed their quota?
@@ -303,7 +304,7 @@ Over time people will be writing derived data products associated with a data re
 By default those previous datasets will not be visible to the butler containing the new data release.
 As long as the previous butler is accessible a user can create two `Butler` instances to access those datasets.
 If older data releases are completely removed (including the registry) then this will not work and tooling must be provided to allow people to migrate datasets from older data release butlers to newer data releases.
-This tooling does exists (see `Butler.transfer_from()`) but may need to be push-button activated.
+This tooling does exist (see `Butler.transfer_from()`) but may need to be push-button activated.
 
 If these datasets are migrated from data release to data release it will be necessary to ensure that the formatters used to read files continue to function across every data release.
 
