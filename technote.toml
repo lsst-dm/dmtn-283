@@ -17,7 +17,7 @@ internal_id = "jennesst"
 orcid = "https://orcid.org/0000-0001-5982-167X"
 name = {given = "Tim", family = "Jenness"}
 [[technote.authors.affiliations]]
-name = "Rubin Observatory Project Office"
+name = "Vera C. Rubin Observatory Project Office"
 internal_id = "RubinObs"
 address = "950 N. Cherry Ave., Tucson, AZ 85719, USA"
 [[technote.authors]]
@@ -27,4 +27,8 @@ orcid = "https://orcid.org/0009-0005-9099-4970"
 [[technote.authors.affiliations]]
 name = "Rubin Observatory Project Office"
 internal_id = "RubinObs"
+address = "950 N. Cherry Ave., Tucson, AZ 85719, USA"
+[[technote.authors.affiliations]]
+name = "Vera C. Rubin Observatory/NSF NOIRLab"
+internal_id = "RubinOps"
 address = "950 N. Cherry Ave., Tucson, AZ 85719, USA"
