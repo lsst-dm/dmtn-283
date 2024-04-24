@@ -178,6 +178,7 @@ Seeding these personal butlers would involve using `Butler.transfer_from` from t
 At that point you might have 10,000 or more personal replicas of the entire data release registry, which is less than ideal.
 It might be necessary to explicitly block the transfer of datasets from the primary butler to the user butler using `transfer_from` and only allow new datasets to be stored – a `butler.get` from the primary followed by a `butler.put` to the user butler can not be prevented, but this would result in the copied dataset using the user's quota and so would be self-limiting.
 If a user wants to query multiple collections across both butlers they would have to do that as independent queries.
+Even if datasets were explicitly copied (and so used bucket quota) the issue of dimension records still has to be solved -- transferring dimension records are always necessary and there is little to prevent someone transferring all the existing records of a data release "just in case".
 
 A more general problem with separate registries is that Butler can not currently query two registries simultaneously.
 To build a quantum graph involving some datasets from a data release and some from a user registry is not yet possible and would require considerable thought.
