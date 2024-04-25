@@ -129,7 +129,7 @@ There is a complication when clients are allowed to store data in the butler in 
 Many Butler queries can take minutes or even longer, and it is not desirable to lock up resources in the server process whilst waiting for these queries to complete.
 The solution is to use a system where queries are sent to workers in an execution pool.
 The client will be issued a job ID and can query the server to obtain the worker status.
-We will consider using the standard UWS protocol {:cite:p}`2016ivoa.spec.1024H` used elsewhere in the project.
+We will consider using the standard UWS protocol {cite:p}`2016ivoa.spec.1024H` used elsewhere in the project.
 The client will initially use polling to determine when a query has completed.
 Once a job completes the client will receive a URI to the results in either JSON or parquet format.
 These results will be written with an expiry date to allow for automatic cleanup of results that are no longer needed.
