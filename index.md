@@ -343,7 +343,6 @@ Even though the project is only required to keep the previous two data releases 
 ## References
 
 ```{bibliography}
-  :style: lsst_aa
 ```
 
 [^oprah]: This was dubbed the "Oprah" model of butler allocations: "You get a butler! You get a butler! Everybody gets a butler!"
